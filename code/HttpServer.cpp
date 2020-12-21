@@ -64,7 +64,9 @@ void HttpServer::__acceptConnection()
     while(1) 
 	{
         acceptFd = accept4(listenFd_,(struct sockaddr *)&client_addr,&client_addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+		std::cout<<"1111111111111111111111111111111111111111111111111111"<<std::endl;
 		LOG << "New connection from " << inet_ntoa(client_addr.sin_addr) << ":"<< ntohs(client_addr.sin_port);
+		std::cout<<"2222222222222222222222222222222222222222222222222222"<<std::endl;
         if(acceptFd == -1) 
 		{
             if(errno == EAGAIN)
