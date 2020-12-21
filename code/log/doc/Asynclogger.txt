@@ -1,0 +1,19 @@
+Asynclogger类,启动一个线程，执行线程函数，实现日志从前端到后端的传送：
+class Asynclogger:
+私有成员变量：
+mutex mutex_;
+condition cond_;
+thread thread_;
+
+std::string basename;
+bool runing;
+const int flushinterval;
+
+std::shared_ptr<fixed_buffer> currentBuffer_;
+std::shared_ptr<fixed_buffer> nextBuffer_;
+std::vector<std::shared_ptr<fixed_buffer>> buffers_;
+私有函数变量：
+void thread_func();
+公有函数变量：
+void start();
+void stop();

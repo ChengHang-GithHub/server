@@ -1,0 +1,10 @@
+实现一个logger类对LogStream再次封装：
+私有成员变量：
+LogStream stream;
+char* filename;
+int line_num;
+私有成员函数：
+void format_time();
+公有成员变量：
+Logger(char* filename_,int line_num_);
+~Logger();

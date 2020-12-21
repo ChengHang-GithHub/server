@@ -1,0 +1,43 @@
+一、封装一个缓冲区fixed_buffer类
+成员变量：
+char* data;  //指向数组
+char* cur;   //指向第一个空闲位置
+公有接口：
+void append(const char* buf,size_t len);//添加元素
+const char* data()const;      //获取起始地址
+char* current()const;        //获取当前位置
+int avail()const;            //获取剩余空间
+int length()const;          //获取已经使用的空间
+void add(size_t len);        //往前移动当前指针
+
+void reset();      //当前指针复位
+void bzero();      //缓冲区清零
+
+二、封装一个LogStream类将各类数据存到缓冲区
+成员变量： 
+fixed_buffer buffer;
+私有成员函数：
+template<typename T>
+void trans_format(T);  //将数字转化成字符串存入缓冲区
+外部接口：
+void append(char* buf,size_t len);
+fixed_buffer& get_buffer()const;
+<<运算符重载：
+LogStream& operator<<(bool);
+LogStream& operator<<(char);
+LogStream& operator<<(short);
+LogStream& operator<<(unsigned short);
+LogStream& operator<<(int);
+LogStream& operator<<(unsigned int);
+LogStream& operator<<(long);
+LogStream& operator<<(unsigned long);
+LogStream& operator<<(long long);
+LogStream& operator<<(unsigned long long);
+LogStream& operator<<(double);
+LogStream& operator<<(float);
+
+LogStream& operator<<(const void*);
+LogStream& operator<<(const char*);
+LogStream& operator<<(const unsigned char*);
+LogStream& operator<<(const string&);
+LogStream& operator<<(float);

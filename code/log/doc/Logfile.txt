@@ -1,0 +1,13 @@
+Logfile类实现将数据写入文件：
+私有成员变量：
+FILE* fp;    //文件指针
+char file_cache[64*1024];//文件缓存区，注意对其操作要加锁！！
+char* file_name;
+int count;
+mutex mymutex;
+私有成员函数：
+公有成员函数：
+void append(char* logline,int len);
+void flush();
+
+
