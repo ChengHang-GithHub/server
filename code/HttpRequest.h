@@ -1,13 +1,18 @@
 #ifndef __HTTP_REQUEST_H__
 #define __HTTP_REQUEST_H__
 
-#include "Buffer.h"
-#include "Timer.h"
 #include <string>
 #include <map>
 #include <iostream>
+#include <mysql/mysql.h>
+#include <string.h>
+#include <stdio.h>
+#include "Buffer.h"
+#include "Timer.h"
+#include "sqlconnpool.h"
+#include "sqlconnRAII.h"
 
-#define STATIC_ROOT "../www"
+#define STATIC_ROOT "../resources"
 
 namespace myserver 
 {
@@ -97,6 +102,14 @@ private:
     std::string path_; // URL路径
     std::string query_; // URL参数
     std::map<std::string, std::string> headers_; // 存储报文头部
+
+private:
+	bool UserVerify(const std::string& name, const std::string& pwd, bool isLogin);
+	void ParseFromUrlencoded_();
+	void Parsebody(const char* start, const char* end);
+	std::string body_;
+	std::string key;
+	std::string value;
 }; 
 } 
 #endif

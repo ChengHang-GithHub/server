@@ -1,15 +1,8 @@
 #include "HttpResponse.h"
 #include "Buffer.h"
-#include "/mnt/hgfs/myshare/server/code/log/Logging.h"
+#include "./log/Logger.h"
 
-#include <string>
-#include <iostream>
-#include <cassert>
-#include <cstring>
-#include <fcntl.h> // open
-#include <unistd.h> // close
-#include <sys/stat.h> // stat
-#include <sys/mman.h> // mmap, munmap
+
 
 using namespace myserver;
 
@@ -47,26 +40,27 @@ Buffer HttpResponse::makeResponse()
 
     if(statusCode_ == 400) 
 	{
-        doErrorResponse(output, "Swings can't parse the message");
+        doErrorResponse(output, "myserver can't parse the message");
         return output;
     }
     struct stat sbuf;  //struct stat这个结构体是用来描述一个linux系统文件属性的结构。
     if(stat(path_.data(), &sbuf) < 0) 
 	{
         statusCode_ = 404;
-        doErrorResponse(output, "Swings can't find the file");
+        doErrorResponse(output, "myserver can't find the file");
         return output;
     }
     // 权限错误：不是一个常规文件或者为用户不可读文件
     if(!(S_ISREG(sbuf.st_mode) || !(S_IRUSR & sbuf.st_mode))) 
 	{
         statusCode_ = 403;
-        doErrorResponse(output, "Swings can't read the file");
+        doErrorResponse(output, "myserver can't read the file");
         return output;
     }
     // 处理静态文件请求
+	fileSize=sbuf.st_size;
     doStaticRequest(output, sbuf.st_size);
-	LOG << "Request: " << output.to_string();
+	//LOG << "Request: " << output.to_string();
     return output;
 }
 
@@ -101,22 +95,27 @@ void HttpResponse::doStaticRequest(Buffer& output, long fileSize)
     output.append("\r\n");
 
     // 报文体
-    int srcFd = ::open(path_.data(), O_RDONLY, 0);
-    // 将文件映射进内存
-    void* mmapRet = ::mmap(NULL, fileSize, PROT_READ, MAP_PRIVATE, srcFd, 0);
-    close(srcFd);
-    if(mmapRet == (void*) -1) //映射失败
+	//std::cout<<"path_.data():"<<path_.data()<<std::endl;
 	{
-        munmap(mmapRet, fileSize);  //解除映射
-        output.retrieveAll();
-        statusCode_ = 404;
-        doErrorResponse(output, "myserver can't find the file");
-        return;
-    }
-    char* srcAddr = static_cast<char*>(mmapRet);
-    output.append(srcAddr, fileSize);
-
-    munmap(srcAddr, fileSize);//解除映射
+		//std::unique_lock<std::mutex>lock_(mutex_);
+		int srcFd = ::open(path_.data(), O_RDONLY, 0);
+	
+    // 将文件映射进内存
+		int* mmapRet = (int*)mmap(NULL, fileSize, PROT_READ, MAP_PRIVATE, srcFd, 0);
+		//std::cout<<"mmapRet:"<<mmapRet<<std::endl;
+		if(*mmapRet == -1) //映射失败
+		{
+			//std::cout<<"!!!mmapRet == (void*) -1"<<std::endl;
+			munmap(mmapRet, fileSize);  //解除映射
+			output.retrieveAll();
+			statusCode_ = 404;
+			doErrorResponse(output, "myserver can't find the file");
+			return;
+		}
+		srcAddr = (char*)(mmapRet);
+		close(srcFd);
+		output.append(srcAddr, fileSize);
+	}
 }
 
 void HttpResponse::doErrorResponse(Buffer& output, std::string message) 
@@ -128,7 +127,7 @@ void HttpResponse::doErrorResponse(Buffer& output, std::string message)
         return;
     }
 
-    body += "<html><title>Swings Error</title>";
+    body += "<html><title>myserver Error</title>";
     body += "<body bgcolor=\"ffffff\">";
     body += std::to_string(statusCode_) + " : " + itr -> second + "\n";
     body += "<p>" + message + "</p>";

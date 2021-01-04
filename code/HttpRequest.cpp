@@ -13,11 +13,13 @@ HttpRequest::HttpRequest(int fd)
       method_(Invalid),       
       version_(Unknown)
 {
+	headers_.clear();
     assert(fd_ >= 0);
 }
 
 HttpRequest::~HttpRequest()
 {
+	headers_.clear();
     close(fd_);    //析构时关闭文件描述符
 }
 
@@ -33,7 +35,7 @@ int HttpRequest::write(int* savedErrno)
     return ret;
 }
 
-bool HttpRequest::parseRequest()
+bool HttpRequest::parseRequest()     //解析请求行和头部信息
 {
     bool ok = true;
     bool hasMore = true;
@@ -62,7 +64,7 @@ bool HttpRequest::parseRequest()
         } 
 		else if(state_ == ExpectHeaders) // 处理报文头部字段
 		{
-            const char* crlf = inBuff_.findCRLF();//寻找换行符'/r/n'
+            const char* crlf = inBuff_.findCRLF();//寻找回车换行符'/r/n'
             if(crlf) 
 			{
                 const char* colon = std::find(inBuff_.peek(), crlf, ':');//寻找':'
@@ -72,8 +74,13 @@ bool HttpRequest::parseRequest()
                 } 
 				else  //没找到':'
 				{
-                    state_ = GotAll;
-                    hasMore = false;
+					if(method_==Post)
+						state_ = ExpectBody;
+					else
+					{
+						state_ = GotAll;
+						hasMore = false;
+					}  
                 }
                 inBuff_.retrieveUntil(crlf + 2);
             } 
@@ -84,9 +91,12 @@ bool HttpRequest::parseRequest()
         } 
 		else if(state_ == ExpectBody) {
             // TODO 处理报文体 
+			Parsebody(inBuff_.peek(), inBuff_.beginWrite());
+			state_ = GotAll;
+			hasMore = false;
         }
     }
-
+	//std::cout<<"state_:"<<state_<<std::endl;
     return ok;
 }
 
@@ -134,6 +144,116 @@ void HttpRequest::resetParse()
     query_ = ""; // URL参数
     headers_.clear(); // 报文头部
 }
+
+bool HttpRequest::UserVerify(const std::string &name, const std::string &pwd, bool isLogin) {
+    if(name == "" || pwd == "") { return false; }
+    MYSQL* sql;
+    SqlConnRAII(&sql,  SqlConnPool::Instance());
+    assert(sql);
+    
+    bool flag = false;
+    unsigned int j = 0;
+    char order[256] = { 0 };
+    MYSQL_FIELD *fields = nullptr;
+    MYSQL_RES *res = nullptr;
+    
+    if(!isLogin) { flag = true; }    //注册
+    /* 查询用户及密码 */
+    snprintf(order, 256, "SELECT username, password FROM user WHERE username='%s' LIMIT 1", name.c_str());
+
+    if(mysql_query(sql, order)) { 
+        mysql_free_result(res);
+        return false; 
+    }
+    res = mysql_store_result(sql);   //存储查询结果
+    j = mysql_num_fields(res);       //列数
+    fields = mysql_fetch_fields(res);    //获取所有列 
+
+    while(MYSQL_ROW row = mysql_fetch_row(res)) {    //获取结果行
+        std::string password(row[1]);
+
+        if(isLogin) {      //已注册，验证密码是否正确
+            if(pwd == password) { flag = true; }
+            else {          //密码错误
+                flag = false;
+                std::cout<<"pwd error!"<<std::endl;
+            }
+        } 
+        else {  					//未注册，却查询到结果，说明注册的用户名重复
+            flag = false; 
+			std::cout<<"user used!"<<std::endl;
+        }
+    }
+    mysql_free_result(res);
+
+    if(!isLogin && flag == true) {     //注册
+        bzero(order, 256);
+        snprintf(order, 256,"INSERT INTO user(username, password) VALUES('%s','%s')", name.c_str(), pwd.c_str());
+        if(mysql_query(sql, order)) { 
+			std::cout<<"Insert error!"<<std::endl;
+            flag = false; 
+        }
+        flag = true;
+    }
+    SqlConnPool::Instance()->FreeConn(sql);
+    std::cout<<"UserVerify success!!"<<std::endl;
+    return flag;
+}
+
+void HttpRequest::ParseFromUrlencoded_() {
+    if(body_.size() == 0) { return; }
+
+    int num = 0;
+    int n = body_.size();
+    int i = 0, j = 0;
+	//std::cout<<"body:"<<body_<<std::endl;
+
+    for(; i < n; i++) {
+        char ch = body_[i];
+        switch (ch) {
+        case '=':
+            key = body_.substr(j, i - j);
+            j = i + 1;
+            break;
+        case '&':
+            value = body_.substr(j, i - j);
+            j = i + 1;
+            break;
+        default:
+            break;
+        }
+    }
+	//std::cout<<"key:"<<key<<std::endl;
+	//std::cout<<"value:"<<value<<std::endl;
+}
+
+void HttpRequest::Parsebody(const char* start, const char* end) {
+	body_=std::string(start,end);
+    if(method_ == Post && headers_["Content-Type"] == "application/x-www-form-urlencoded") 
+	{
+        ParseFromUrlencoded_();
+		bool isLogin=false;
+		if(path_=="../resources/register.html")
+			isLogin=false;
+		else if(path_=="../resources/login.html")
+			isLogin=true;
+		else{
+			std::cout<<"path should be ../resources/register.html or ../resources/login.html! "<<std::endl;
+		}
+		if(UserVerify(key, value, isLogin)) 
+			path_ = "../resources/welcome.html";
+		else
+			path_ = "../resources/error.html";
+    } 
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -204,7 +324,8 @@ void HttpRequest::__setPath(const char* begin, const char* end)
     subPath.assign(begin, end);
     if(subPath == "/")
         subPath = "/index.html";
-    path_= STATIC_ROOT + subPath;
+    path_= STATIC_ROOT+subPath;
+	//std::cout<<"path_:"<<path_<<std::endl;
 }
 
 void HttpRequest::__setQuery(const char* begin, const char* end)

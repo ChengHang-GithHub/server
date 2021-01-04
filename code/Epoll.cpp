@@ -5,7 +5,6 @@
 #include <iostream>
 #include <cassert>
 #include <cstring> // perror
-
 #include <unistd.h> // close
 
 using namespace myserver;
@@ -54,7 +53,7 @@ int Epoll::wait(int timeoutMs)
 {
     int eventsNum = epoll_wait(epollFd_, &events_[0], MAXEVENTS, timeoutMs);
     if(eventsNum == 0) {
-        printf("[Epoll::wait] nothing happen, epoll timeout\n");
+        //printf("[Epoll::wait] nothing happen, epoll timeout\n");
     } 
 	else if(eventsNum < 0) {
         printf("[Epoll::wait] epoll : %s\n", strerror(errno));
@@ -89,12 +88,14 @@ void Epoll::handleEvent(int listenFd, std::unique_ptr<ThreadPool>& threadPool, i
 				//printf("这是一个可写就绪事件，准备往线程池任务队列中添加一个读任务！\n");
                 request -> setWorking();
                 threadPool -> pushJob(std::bind(onRequest_, request));
+				//threadPool -> AddTask(std::move(std::bind(onRequest_, request)));
             } 
 			else if(events_[i].events & EPOLLOUT) //可写
 			{   
 				//printf("这是一个可读就绪事件，准备往线程池任务队列中添加一个写任务！\n");
                 request -> setWorking();
                 threadPool -> pushJob(std::bind(onResponse_, request));
+				//threadPool -> AddTask(std::move(std::bind(onRequest_, request)));
             } 
 			else {
                 printf("[Epoll::handleEvent] unexpected event！\n");

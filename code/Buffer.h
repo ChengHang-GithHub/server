@@ -5,7 +5,6 @@
 #include <string>
 #include <algorithm> // copy
 #include <iostream>
-
 #include <cassert>
 
 #define INIT_SIZE 1024
@@ -23,7 +22,7 @@ public:
         assert(readableBytes() == 0);
         assert(writableBytes() == INIT_SIZE);
     }
-    ~Buffer() {}
+    ~Buffer() = default;
 
     // 默认拷贝构造函数和赋值函数可用
 

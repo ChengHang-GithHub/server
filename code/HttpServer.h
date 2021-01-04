@@ -3,10 +3,13 @@
 
 #include <memory> // unique_ptr
 #include <mutex>
+#include <mysql/mysql.h>
 #include "HttpRequest.h"
 #include "Epoll.h"
 #include "ThreadPool.h"
 #include "Timer.h"
+#include "sqlconnRAII.h"
+#include "sqlconnpool.h"
 
 #define TIMEOUTMS -1 // epoll_wait等待超时时间，-1表示不设超时
 #define CONNECT_TIMEOUT 500 // 连接默认超时时间
@@ -17,7 +20,7 @@ namespace myserver
 class HttpServer 
 {
 public:
-    HttpServer(int port, int numThread);
+    HttpServer(int port, int numThread,const char* host, int sqlport,const char* sqluser,const char* sqlpwd, const char* dbName,int connSize);
     ~HttpServer();
     void run(); // 启动HTTP服务器
     

@@ -5,7 +5,7 @@
 #include "Epoll.h"
 #include "ThreadPool.h"
 #include "Timer.h"
-#include "/mnt/hgfs/myshare/server/code/log/Logging.h"
+#include "./log/Logger.h"
 
 #include <iostream>
 #include <functional> // bind
@@ -19,10 +19,9 @@
 
 using namespace myserver;
 
-HttpServer::HttpServer(int port, int numThread) //端口号、线程数目
+HttpServer::HttpServer(int port, int numThread,const char* host, int sqlport,const char* sqluser,const char* sqlpwd, const char* dbName,int connSize) //端口号、线程数目
     : port_(port),
       listenFd_(utils::createListenFd(port_)),
-	  
       listenRequest_(new HttpRequest(listenFd_)),
       epoll_(new Epoll()),
       threadPool_(new ThreadPool(numThread)),
@@ -33,10 +32,12 @@ HttpServer::HttpServer(int port, int numThread) //端口号、线程数目
     epoll_ -> setOnCloseConnection(std::bind(&HttpServer::__closeConnection, this, std::placeholders::_1));
     epoll_ -> setOnRequest(std::bind(&HttpServer::__doRequest, this, std::placeholders::_1));
     epoll_ -> setOnResponse(std::bind(&HttpServer::__doResponse, this, std::placeholders::_1));
+	SqlConnPool::Instance()->Init("localhost", sqlport, sqluser, sqlpwd, dbName, connSize);
 }
 
 HttpServer::~HttpServer()
 {
+	SqlConnPool::Instance()->ClosePool();
 }
 
 void HttpServer::run()
@@ -44,14 +45,14 @@ void HttpServer::run()
     // 注册监听套接字到epoll（可读事件，ET模式）
     epoll_ -> add(listenFd_, listenRequest_.get(), (EPOLLIN | EPOLLET));
     while(1) 
-	{
+	{	
         int timeMS = timerManager_ -> getNextExpireTime();
         int eventsNum = epoll_ -> wait(timeMS);
         if(eventsNum > 0) 
 		{
             epoll_ -> handleEvent(listenFd_, threadPool_, eventsNum);
         }
-        timerManager_ -> handleExpireTimers();   
+        timerManager_ -> handleExpireTimers();  	
     }
 }
 
@@ -64,9 +65,7 @@ void HttpServer::__acceptConnection()
     while(1) 
 	{
         acceptFd = accept4(listenFd_,(struct sockaddr *)&client_addr,&client_addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
-		std::cout<<"1111111111111111111111111111111111111111111111111111"<<std::endl;
-		LOG << "New connection from " << inet_ntoa(client_addr.sin_addr) << ":"<< ntohs(client_addr.sin_port);
-		std::cout<<"2222222222222222222222222222222222222222222222222222"<<std::endl;
+		//LOG << "New connection from " << inet_ntoa(client_addr.sin_addr) << ":"<< ntohs(client_addr.sin_port);
         if(acceptFd == -1) 
 		{
             if(errno == EAGAIN)
@@ -75,6 +74,7 @@ void HttpServer::__acceptConnection()
             break;
         }
         HttpRequest* request = new HttpRequest(acceptFd);
+		//std::cout<<"sizeof(request):"<<strlen((char*)(request))<<std::endl;
         timerManager_ -> addTimer(request, CONNECT_TIMEOUT, std::bind(&HttpServer::__closeConnection, this, request));
         epoll_ -> add(acceptFd, request, (EPOLLIN | EPOLLONESHOT | EPOLLET));
     }
@@ -86,6 +86,7 @@ void HttpServer::__closeConnection(HttpRequest* request)
     if(request -> isWorking()) {
         return;
     }
+	//std::cout<<"sizeof(________request):"<<strlen((char*)(request))<<std::endl;
     timerManager_ -> delTimer(request);
     epoll_ -> del(fd, request, 0);
     delete request;// 释放该套接字占用的HttpRequest资源，在析构函数中close(fd)
@@ -136,20 +137,20 @@ void HttpServer::__doRequest(HttpRequest* request)
 	{
         HttpResponse response(400, "", false);  // 生成400报文
         request -> appendOutBuffer(response.makeResponse());  //添加到输出缓冲区
-
         int writeErrno;
         request -> write(&writeErrno);
         request -> setNoWorking();
         __closeConnection(request); 
         return; 
     }
-
+	
     // 解析完成
     if(request -> parseFinish()) 
 	{
         HttpResponse response(200, request -> getPath(), request -> keepAlive());
         request -> appendOutBuffer(response.makeResponse());   //添加到输出缓冲区
-        epoll_ -> mod(fd, request, (EPOLLIN | EPOLLOUT | EPOLLONESHOT | EPOLLET));   //这里关注了可写事件
+        //epoll_ -> mod(fd, request, (EPOLLIN | EPOLLOUT | EPOLLONESHOT | EPOLLET));   //这里关注了可写事件
+		epoll_ -> mod(fd, request, (EPOLLOUT | EPOLLONESHOT | EPOLLET));   //这里关注了可写事件
     }
 }
 
@@ -161,7 +162,7 @@ void HttpServer::__doResponse(HttpRequest* request)
 
     int toWrite = request -> writableBytes();  
 
-    if(toWrite == 0) //输出缓冲区没有空间
+    if(toWrite == 0) //连接输出缓冲区没有东西输出
 	{
         epoll_ -> mod(fd, request, (EPOLLIN | EPOLLONESHOT | EPOLLET));//只关注可读事件即可
         request -> setNoWorking();
@@ -174,7 +175,8 @@ void HttpServer::__doResponse(HttpRequest* request)
 
     if(ret < 0 && writeErrno == EAGAIN) //内核缓冲区满
 	{
-        epoll_ -> mod(fd, request, (EPOLLIN | EPOLLOUT | EPOLLONESHOT | EPOLLET));
+       // epoll_ -> mod(fd, request, (EPOLLIN | EPOLLOUT | EPOLLONESHOT | EPOLLET));
+	   epoll_ -> mod(fd, request, (EPOLLOUT | EPOLLONESHOT | EPOLLET));
         return;
     }
 
@@ -202,8 +204,9 @@ void HttpServer::__doResponse(HttpRequest* request)
         }
         return;
     }
-   //没写满，等待下次就绪事件来临
-    epoll_ -> mod(fd, request, (EPOLLIN | EPOLLOUT | EPOLLONESHOT | EPOLLET));
+   //没写完，等待下次就绪事件来临
+    //epoll_ -> mod(fd, request, (EPOLLIN | EPOLLOUT | EPOLLONESHOT | EPOLLET));
+	epoll_ -> mod(fd, request, (EPOLLOUT | EPOLLONESHOT | EPOLLET));
     request -> setNoWorking();
     timerManager_ -> addTimer(request, CONNECT_TIMEOUT, std::bind(&HttpServer::__closeConnection, this, request));
     return;
